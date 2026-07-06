@@ -26,4 +26,4 @@ g++ -O2 -std=c++17 analyze_raw_dat.cpp -o analyze_raw_dat $(root-config --cflags
 # Hitmap and gif visualtion by python
 python3 hitmap.py
 
-#TDC data is still studying. I use default T3 value as 3.125 ns. Check ETROC reference manual section 3.2 TDC .
+# TDC data is still studying. I use default T3 value as 3.125 ns. Check ETROC reference manual section 3.2 TDC .

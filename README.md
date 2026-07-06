@@ -16,6 +16,8 @@ Raw_data REF: https://cernbox.cern.ch/files/spaces/eos/project/m/mtd-etl-system-
 -pip3 install pandas numpy matplotlib seaborn pillow
 
 ## 🚀 Build and RUN
+# raw_data
+It is a folder for data from REF link. zip file contain same files.
 # results folder
 mkdir -p results
 

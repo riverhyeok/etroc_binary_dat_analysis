@@ -4,6 +4,9 @@
 
 It is designed to parse raw data frames acquired from ETROC2 sensors and perform analyses of 16×16 pixel occupancy, timing information.
 Raw_data REF: https://cernbox.cern.ch/files/spaces/eos/project/m/mtd-etl-system-test/public/Test%20Beam%20Data/SPS_May_2025/etroc_binary
+
+ETROC2 Rerfence manual: https://indico.cern.ch/event/1288660/contributions/5415154/attachments/2651263/4590830/ETROC2_Reference_Manual%200.41.pdf<img width="1732" height="62" alt="image" src="https://github.com/user-attachments/assets/d4382750-16e6-4e8c-91c5-7e751f267b03" />
+
  
 ## 🛠️ Prerequisites
 

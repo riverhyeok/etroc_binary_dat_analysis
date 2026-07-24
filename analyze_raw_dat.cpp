@@ -433,7 +433,7 @@ void export_global_stats() {
         string out_path = "results/global_" + label;
         RecoStats& s = kv.second;
 
-        ofstream hmf(out_path + "_heatmap.csv");
+        ofstream hmf(out_path + "_hitmap.csv");
         for (int r = 0; r < 16; r++) {
             for (int c = 0; c < 16; c++) hmf << s.hit_map[r][c] << (c == 15 ? "" : ",");
             hmf << "\n";

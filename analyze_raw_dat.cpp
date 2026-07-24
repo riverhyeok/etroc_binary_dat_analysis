@@ -135,7 +135,7 @@ struct RecoStats {
     }
 };
 
-// Global 데이터 보관소 (RAW CODE & 물리적 ns 두 가지 모두 보관)
+// Global 데이터 보관소
 std::map<uint8_t, TH1D*> g_toa; 
 std::map<uint8_t, TH1D*> g_tot; 
 std::map<uint8_t, TH1D*> g_cal;
@@ -159,6 +159,10 @@ class EtrocChannelAnalyzer {
     RecoStats s_;
     uint8_t chan_tag_;
     
+    TH1D* h_toa_; TH1D* h_tot_; TH1D* h_cal_;
+    TH1D* h_toa_ns_; TH1D* h_tot_ns_;
+    TH1D* h_status_; TH1D* h_crc_; TH1D* h_bcid_delta_; TH1D* h_hits_per_event_;
+    
     bool is_synced_ = false, expect_l1_jump_ = false, in_event_ = false, has_pending_event_ = false;
     uint64_t pending_trailer_w_ = 0, event_id_ = 0;
     uint32_t hdr_bcid_ = 0, last_bcid_ = 0;
@@ -167,6 +171,7 @@ class EtrocChannelAnalyzer {
     
     std::vector<uint64_t> current_event_data_;
     std::vector<uint8_t> event_bytes_;
+    std::vector<string> hit_stream_buffer_;
     std::vector<uint64_t> recent_words_;
     int cut_print_count_ = 0;
     uint64_t global_word_index_ = 0;
@@ -190,9 +195,11 @@ class EtrocChannelAnalyzer {
         s_.l1_buffer_status_counts[buffer_stat]++;
         if (seu_flag) s_.seu_error_counts++;
 
+        h_status_->Fill(status);
         g_status[chan_tag_]->Fill(status);
 
         uint64_t event_hits = current_event_data_.size();
+        h_hits_per_event_->Fill(event_hits);
         g_hits_per_event[chan_tag_]->Fill(event_hits);
 
         if (trl_h == 0 && event_hits >= 200) trl_h = 256;
@@ -214,26 +221,33 @@ class EtrocChannelAnalyzer {
             uint16_t tot_code = etroc::dat_tot(hit_w);
             uint16_t toa_code = etroc::dat_toa(hit_w);
             uint16_t cal_code = etroc::dat_cal(hit_w);
+            double toa_ns = 0.0, tot_ns = 0.0;
             
             if (cal_code > 0) {
-                // 1. Raw Code 저장
+                h_toa_->Fill(toa_code);
                 g_toa[chan_tag_]->Fill(toa_code);
+                h_tot_->Fill(tot_code);
                 g_tot[chan_tag_]->Fill(tot_code);
                 
-                // 2. Physical Time (ns) 계산 및 저장
                 double t_bin = T3_NS / (double)cal_code;
-                double toa_ns = t_bin * (double)toa_code;
-                double tot_ns = t_bin * ((2.0 * tot_code) - std::floor(tot_code / 32.0));
+                toa_ns = t_bin * (double)toa_code;
+                tot_ns = t_bin * ((2.0 * tot_code) - std::floor(tot_code / 32.0));
                 
+                h_toa_ns_->Fill(toa_ns);
                 g_toa_ns[chan_tag_]->Fill(toa_ns);
+                h_tot_ns_->Fill(tot_ns);
                 g_tot_ns[chan_tag_]->Fill(tot_ns);
             }
+            h_cal_->Fill(cal_code);
             g_cal[chan_tag_]->Fill(cal_code);
             g_valid_hits[chan_tag_]++;
+            
+            hit_stream_buffer_.push_back(to_string(event_id_) + "," + to_string(row) + "," + to_string(col) + "," + to_string(toa_ns) + "," + to_string(tot_ns) + "," + to_string(cal_code) + "," + to_string(ea));
         }
 
         push_word_bytes(event_bytes_, pending_trailer_w_);
         uint8_t crc_syndrome = etroc::calculate_crc8(event_bytes_);
+        h_crc_->Fill(crc_syndrome);
         g_crc[chan_tag_]->Fill(crc_syndrome);
 
         bool is_crc_mismatch = (crc_syndrome != 0x00);
@@ -257,7 +271,25 @@ class EtrocChannelAnalyzer {
 
 public:
     EtrocChannelAnalyzer(const string& name, uint32_t chip_id, const string& prefix, uint8_t chan_tag) 
-        : name_(name), expected_chip_id_(chip_id), file_prefix_(prefix), chan_tag_(chan_tag) {}
+        : name_(name), expected_chip_id_(chip_id), file_prefix_(prefix), chan_tag_(chan_tag) {
+        string t_name = name_ + "_" + file_prefix_;
+        h_toa_ = new TH1D(Form("h_toa_%s", t_name.c_str()), Form("TOA_CODE Distribution (%s);TOA_CODE [0-1023];Counts", name_.c_str()), 1024, 0, 1024);
+        h_tot_ = new TH1D(Form("h_tot_%s", t_name.c_str()), Form("TOT_CODE Distribution (%s);TOT_CODE [0-511];Counts", name_.c_str()), 512, 0, 512);
+        h_cal_ = new TH1D(Form("h_cal_%s", t_name.c_str()), Form("CAL_CODE Distribution (%s);CAL_CODE [0-1023];Counts", name_.c_str()), 1024, 0, 1024);
+        
+        h_toa_ns_ = new TH1D(Form("h_toa_ns_%s", t_name.c_str()), Form("TOA Time Distribution (%s);TOA (ns);Counts", name_.c_str()), 250, 0, 25);
+        h_tot_ns_ = new TH1D(Form("h_tot_ns_%s", t_name.c_str()), Form("TOT Time Distribution (%s);TOT (ns);Counts", name_.c_str()), 250, 0, 25);
+
+        h_status_ = new TH1D(Form("h_stat_%s", t_name.c_str()), Form("Trailer Status Code (%s);Status Code [0-63];Events", name_.c_str()), 64, 0, 64);
+        h_crc_    = new TH1D(Form("h_crc_%s", t_name.c_str()), Form("CRC Syndrome (%s);CRC Result (0=Match);Events", name_.c_str()), 256, 0, 256);
+        h_bcid_delta_ = new TH1D(Form("h_bcid_d_%s", t_name.c_str()), Form("Delta BCID (%s);#Delta BCID (Counts);Events", name_.c_str()), 4096, 0, 4096);
+        h_hits_per_event_ = new TH1D(Form("h_hpe_%s", t_name.c_str()), Form("Data Words per Header (%s);Number of Data Words (Hits);Events", name_.c_str()), 257, -0.5, 256.5);
+    }
+    ~EtrocChannelAnalyzer() { 
+        delete h_toa_; delete h_tot_; delete h_cal_; 
+        delete h_toa_ns_; delete h_tot_ns_;
+        delete h_status_; delete h_crc_; delete h_bcid_delta_; delete h_hits_per_event_; 
+    }
 
     void process_word(uint64_t w, uint64_t file_total_records) {
         global_word_index_++;
@@ -307,6 +339,7 @@ public:
                     }
                 }
                 int delta_bcid = (curr_bcid - last_bcid_) & 0xFFF;
+                h_bcid_delta_->Fill(delta_bcid);
                 g_bcid_delta[chan_tag_]->Fill(delta_bcid);
             }
             is_first_event_ = false; last_l1_cnt_ = curr_l1_cnt; last_bcid_ = curr_bcid; expect_l1_jump_ = false;
@@ -338,6 +371,63 @@ public:
         if (has_pending_event_) { commit_pending_event(); has_pending_event_ = false; }
         if (in_event_) { s_.wp_boundary_cuts++; in_event_ = false; }
         g_stats[chan_tag_].add(s_); g_sys[chan_tag_].add(sys);
+    }
+
+    void export_local_plots(const string& base_filename) const {
+        string prefix = base_filename.substr(0, base_filename.find(".dat"));
+        if (prefix.find(".bin") != string::npos) prefix = prefix.substr(0, prefix.find(".bin"));
+        size_t last_slash = prefix.find_last_of('/');
+        if (last_slash != string::npos) prefix = prefix.substr(last_slash + 1);
+        string out_path = "results/" + prefix + "_" + name_;
+
+        TCanvas* c1 = new TCanvas("c1", "Local", 800, 600);
+        if (s_.valid_hits > 0) {
+            h_toa_->SetFillColor(38); h_toa_->Draw(); c1->SaveAs((out_path + "_TOA_CODE.png").c_str());
+            h_tot_->SetFillColor(46); h_tot_->Draw(); c1->SaveAs((out_path + "_TOT_CODE.png").c_str());
+            h_cal_->SetFillColor(30); h_cal_->Draw(); c1->SaveAs((out_path + "_CAL_CODE.png").c_str());
+            h_toa_ns_->SetFillColor(38); h_toa_ns_->Draw(); c1->SaveAs((out_path + "_TOA_ns.png").c_str());
+            h_tot_ns_->SetFillColor(46); h_tot_ns_->Draw(); c1->SaveAs((out_path + "_TOT_ns.png").c_str());
+        }
+        if (h_status_->GetEntries() > 0) { 
+            h_status_->SetFillColor(41); h_status_->Draw(); c1->SaveAs((out_path + "_Status_Code.png").c_str()); 
+        }
+        if (h_crc_->GetEntries() > 0) { 
+            h_crc_->SetFillColor(42); h_crc_->Draw(); c1->SaveAs((out_path + "_CRC_Syndrome.png").c_str()); 
+        }
+        if (h_bcid_delta_->GetEntries() > 0) { 
+            h_bcid_delta_->SetFillColor(43); 
+            int first_bin = h_bcid_delta_->FindFirstBinAbove(0);
+            int last_bin = h_bcid_delta_->FindLastBinAbove(0);
+            h_bcid_delta_->GetXaxis()->SetRange(std::max(1, first_bin - 5), std::min(4096, last_bin + 5));
+            h_bcid_delta_->Draw(); c1->SaveAs((out_path + "_BCID_Delta.png").c_str()); 
+        }
+        if (h_hits_per_event_->GetEntries() > 0) {
+            h_hits_per_event_->SetFillColor(44);
+            int last_bin = h_hits_per_event_->FindLastBinAbove(0);
+            h_hits_per_event_->GetXaxis()->SetRange(1, std::min(257, last_bin + 5));
+            h_hits_per_event_->Draw(); c1->SaveAs((out_path + "_Hits_Per_Event.png").c_str());
+        }
+        delete c1;
+    }
+
+    void export_python_data(const string& base_filename, const SystemStats& sys) const {
+        string prefix = base_filename.substr(0, base_filename.find(".dat"));
+        if (prefix.find(".bin") != string::npos) prefix = prefix.substr(0, prefix.find(".bin"));
+        size_t last_slash = prefix.find_last_of('/');
+        if (last_slash != string::npos) prefix = prefix.substr(last_slash + 1);
+        string out_path_prefix = "results/" + prefix;
+
+        ofstream hsf(out_path_prefix + "_" + name_ + "_hit_stream.csv");
+        hsf << "EventID,Row,Col,TOA_ns,TOT_ns,CAL_Code,EA_Code\n";
+        for(auto& str : hit_stream_buffer_) hsf << str << "\n";
+        hsf.close();
+
+        ofstream hmf(out_path_prefix + "_" + name_ + "_hitmap.csv");
+        for (int r = 0; r < 16; r++) {
+            for (int c = 0; c < 16; c++) hmf << s_.hit_map[r][c] << (c == 15 ? "" : ",");
+            hmf << "\n";
+        }
+        hmf.close();
     }
 };
 
@@ -385,19 +475,17 @@ void run_raw_dat(const string& path) {
         else if (tag == 0x2a) label = "Port_R";
         
         if (g_toa.find(tag) == g_toa.end()) {
-            // RAW CODE 단위 히스토그램
-            g_toa[tag] = new TH1D(Form("g_toa_%d", tag), Form("TOA_CODE Distribution (%s);TOA_CODE [0-1023];Counts", label.c_str()), 1024, 0, 1024);
-            g_tot[tag] = new TH1D(Form("g_tot_%d", tag), Form("TOT_CODE Distribution (%s);TOT_CODE [0-511];Counts", label.c_str()), 512, 0, 512);
-            g_cal[tag] = new TH1D(Form("g_cal_%d", tag), Form("CAL_CODE Distribution (%s);CAL_CODE [0-1023];Counts", label.c_str()), 1024, 0, 1024);
+            g_toa[tag] = new TH1D(Form("g_toa_%d", tag), Form("Global TOA_CODE Distribution (%s);TOA_CODE [0-1023];Counts", label.c_str()), 1024, 0, 1024);
+            g_tot[tag] = new TH1D(Form("g_tot_%d", tag), Form("Global TOT_CODE Distribution (%s);TOT_CODE [0-511];Counts", label.c_str()), 512, 0, 512);
+            g_cal[tag] = new TH1D(Form("g_cal_%d", tag), Form("Global CAL_CODE Distribution (%s);CAL_CODE [0-1023];Counts", label.c_str()), 1024, 0, 1024);
             
-            // 나노초(ns) 단위 히스토그램 추가
-            g_toa_ns[tag] = new TH1D(Form("g_toa_ns_%d", tag), Form("TOA Time Distribution (%s);TOA (ns);Counts", label.c_str()), 250, 0, 25);
-            g_tot_ns[tag] = new TH1D(Form("g_tot_ns_%d", tag), Form("TOT Time Distribution (%s);TOT (ns);Counts", label.c_str()), 250, 0, 25);
+            g_toa_ns[tag] = new TH1D(Form("g_toa_ns_%d", tag), Form("Global TOA Time Distribution (%s);TOA (ns);Counts", label.c_str()), 250, 0, 25);
+            g_tot_ns[tag] = new TH1D(Form("g_tot_ns_%d", tag), Form("Global TOT Time Distribution (%s);TOT (ns);Counts", label.c_str()), 250, 0, 25);
 
-            g_status[tag] = new TH1D(Form("g_stat_%d", tag), Form("Trailer Status Code (%s);Status Code [0-63];Events", label.c_str()), 64, 0, 64);
-            g_crc[tag]    = new TH1D(Form("g_crc_%d", tag), Form("CRC Syndrome (%s);Syndrome (0=Match);Events", label.c_str()), 256, 0, 256);
-            g_bcid_delta[tag] = new TH1D(Form("g_bcid_d_%d", tag), Form("Delta BCID (%s);#Delta BCID (Counts);Events", label.c_str()), 4096, 0, 4096);
-            g_hits_per_event[tag] = new TH1D(Form("g_hpe_%d", tag), Form("Data Words per Header (%s);Number of Data Words (Hits);Events", label.c_str()), 257, -0.5, 256.5);
+            g_status[tag] = new TH1D(Form("g_stat_%d", tag), Form("Global Trailer Status Code (%s);Status Code [0-63];Events", label.c_str()), 64, 0, 64);
+            g_crc[tag]    = new TH1D(Form("g_crc_%d", tag), Form("Global CRC Syndrome (%s);Syndrome (0=Match);Events", label.c_str()), 256, 0, 256);
+            g_bcid_delta[tag] = new TH1D(Form("g_bcid_d_%d", tag), Form("Global Delta BCID (%s);#Delta BCID (Counts);Events", label.c_str()), 4096, 0, 4096);
+            g_hits_per_event[tag] = new TH1D(Form("g_hpe_%d", tag), Form("Global Data Words per Header (%s);Number of Data Words (Hits);Events", label.c_str()), 257, -0.5, 256.5);
         }
         
         map<uint32_t, uint64_t> chipid_votes;
@@ -417,6 +505,8 @@ void run_raw_dat(const string& path) {
         }
         SystemStats sys{};
         ana.finalize_stream(sys);
+        ana.export_local_plots(path);
+        ana.export_python_data(path, sys);
     }
 }
 
@@ -438,14 +528,13 @@ void export_global_stats() {
             for (int c = 0; c < 16; c++) hmf << s.hit_map[r][c] << (c == 15 ? "" : ",");
             hmf << "\n";
         }
+        hmf.close();
 
         if (s.valid_hits > 0) {
-            // RAW CODE 플롯
             g_toa[tag]->SetFillColor(38); g_toa[tag]->Draw(); c_glob->SaveAs((out_path + "_TOA_CODE.png").c_str());
             g_tot[tag]->SetFillColor(46); g_tot[tag]->Draw(); c_glob->SaveAs((out_path + "_TOT_CODE.png").c_str());
             g_cal[tag]->SetFillColor(30); g_cal[tag]->Draw(); c_glob->SaveAs((out_path + "_CAL_CODE.png").c_str());
             
-            // ns 변환 물리단위 플롯
             g_toa_ns[tag]->SetFillColor(38); g_toa_ns[tag]->Draw(); c_glob->SaveAs((out_path + "_TOA_ns.png").c_str());
             g_tot_ns[tag]->SetFillColor(46); g_tot_ns[tag]->Draw(); c_glob->SaveAs((out_path + "_TOT_ns.png").c_str());
         }

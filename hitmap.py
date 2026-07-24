@@ -48,12 +48,12 @@ def make_stream_video(stream_csv):
         plt.close()
 
 
-def plot_global_heatmap(heatmap_csv):
+def plot_global_hitmap(hitmap_csv):
     """개별 채널(Port) 16x16 누적 Occupancy 히트맵 시각화"""
-    if not os.path.exists(heatmap_csv): return
+    if not os.path.exists(hitmap_csv): return
 
     try:
-        df = pd.read_csv(heatmap_csv, header=None)
+        df = pd.read_csv(hitmap_csv, header=None)
         if df.empty or df.shape[1] != 16: return
 
         # 매트릭스 방향 정렬 (오른쪽 아래가 0,0)
@@ -61,31 +61,31 @@ def plot_global_heatmap(heatmap_csv):
         df = df.iloc[:, ::-1]
 
         plt.figure(figsize=(9, 7))
-        sns.heatmap(df, cmap='viridis', annot=False, cbar_kws={'label': 'Total Hits'},
+        sns.hitmap(df, cmap='viridis', annot=False, cbar_kws={'label': 'Total Hits'},
                     yticklabels=list(range(15, -1, -1)), xticklabels=list(range(15, -1, -1)))
 
         plt.yticks(rotation=0)
-        plt.title(f"Global Occupancy Map (Bottom-Right = 0,0)\n({os.path.basename(heatmap_csv)})")
+        plt.title(f"Global Occupancy Map (Bottom-Right = 0,0)\n({os.path.basename(hitmap_csv)})")
         plt.xlabel("Column ID (15 -> 0)")
         plt.ylabel("Row ID (15 -> 0)")
 
-        base, _ = os.path.splitext(heatmap_csv)
+        base, _ = os.path.splitext(hitmap_csv)
         out_name = base + "_plot.png"
         plt.savefig(out_name, dpi=300)
         plt.close()
-        print(f"-> Saved Individual Heatmap: {out_name}")
+        print(f"-> Saved Individual hitmap: {out_name}")
     except Exception as e:
         pass
 
 
-def plot_combined_heatmaps(dir_path):
+def plot_combined_hitmaps(dir_path):
     """
     Port_A와 Port_B의 히트맵 데이터를 더하여 하나의 16x16 그리드에 합산 플롯 생성
     (우측 하단이 Col 0, Row 0)
     """
     # [수정] 파일명 탐색을 CH_A/CH_B 에서 Port_A/Port_B 로 변경
-    port_a_file = os.path.join(dir_path, "global_Port_A_heatmap.csv")
-    port_b_file = os.path.join(dir_path, "global_Port_B_heatmap.csv")
+    port_a_file = os.path.join(dir_path, "global_Port_A_hitmap.csv")
+    port_b_file = os.path.join(dir_path, "global_Port_B_hitmap.csv")
 
     if not (os.path.exists(port_a_file) and os.path.exists(port_b_file)):
         return
@@ -108,7 +108,7 @@ def plot_combined_heatmaps(dir_path):
         # 4. 하나의 그림으로 시각화
         plt.figure(figsize=(9, 7))
 
-        sns.heatmap(
+        sns.hitmap(
             df_combined,
             cmap='viridis',
             annot=False,
@@ -124,13 +124,13 @@ def plot_combined_heatmaps(dir_path):
         plt.xlabel("Column ID (15 -> 0)")
         plt.ylabel("Row ID (15 -> 0)")
 
-        out_name = os.path.join(dir_path, "global_Combined_Heatmap_plot.png")
+        out_name = os.path.join(dir_path, "global_Combined_hitmap_plot.png")
         plt.savefig(out_name, dpi=300)
         plt.close()
-        print(f"-> Saved Single Combined Heatmap: {out_name}")
+        print(f"-> Saved Single Combined hitmap: {out_name}")
 
     except Exception as e:
-        print(f"[Error] Failed to generate combined heatmap: {e}")
+        print(f"[Error] Failed to generate combined hitmap: {e}")
 
 if __name__ == "__main__":
     print("=== ETROC Python Visualization Tool ===")
@@ -146,13 +146,13 @@ if __name__ == "__main__":
         sample_file = os.path.join(target_dir, stream_files[0])
         make_stream_video(sample_file)
 
-    # 2. 개별 global heatmap
-    heatmap_files = sorted(
-        [f for f in os.listdir(target_dir) if "global" in f and "heatmap" in f and f.endswith(".csv")])
-    for hm_file in heatmap_files:
-        plot_global_heatmap(os.path.join(target_dir, hm_file))
+    # 2. 개별 global hitmap
+    hitmap_files = sorted(
+        [f for f in os.listdir(target_dir) if "global" in f and "hitmap" in f and f.endswith(".csv")])
+    for hm_file in hitmap_files:
+        plot_global_hitmap(os.path.join(target_dir, hm_file))
 
-    # 3. Port_A & Port_B 통합 global heatmap
-    plot_combined_heatmaps(target_dir)
+    # 3. Port_A & Port_B 통합 global hitmap
+    plot_combined_hitmaps(target_dir)
 
     print("=======================================")

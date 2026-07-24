@@ -49,7 +49,7 @@ def make_stream_video(stream_csv):
 
 
 def plot_global_heatmap(heatmap_csv):
-    """개별 채널 16x16 누적 Occupancy 히트맵 시각화"""
+    """개별 채널(Port) 16x16 누적 Occupancy 히트맵 시각화"""
     if not os.path.exists(heatmap_csv): return
 
     try:
@@ -80,24 +80,25 @@ def plot_global_heatmap(heatmap_csv):
 
 def plot_combined_heatmaps(dir_path):
     """
-    CH_A와 CH_B의 히트맵 데이터를 더하여 하나의 16x16 그리드에 합산 플롯 생성
+    Port_A와 Port_B의 히트맵 데이터를 더하여 하나의 16x16 그리드에 합산 플롯 생성
     (우측 하단이 Col 0, Row 0)
     """
-    ch_a_file = os.path.join(dir_path, "global_CH_A_heatmap.csv")
-    ch_b_file = os.path.join(dir_path, "global_CH_B_heatmap.csv")
+    # [수정] 파일명 탐색을 CH_A/CH_B 에서 Port_A/Port_B 로 변경
+    port_a_file = os.path.join(dir_path, "global_Port_A_heatmap.csv")
+    port_b_file = os.path.join(dir_path, "global_Port_B_heatmap.csv")
 
-    if not (os.path.exists(ch_a_file) and os.path.exists(ch_b_file)):
+    if not (os.path.exists(port_a_file) and os.path.exists(port_b_file)):
         return
 
     try:
         # 1. 두 파일 읽어오기
-        df_a = pd.read_csv(ch_a_file, header=None)
-        df_b = pd.read_csv(ch_b_file, header=None)
+        df_a = pd.read_csv(port_a_file, header=None)
+        df_b = pd.read_csv(port_b_file, header=None)
 
         if df_a.shape[1] != 16 or df_b.shape[1] != 16:
             return
 
-        # 2. 두 채널의 히트수 행렬 더하기 (Pandas DataFrame 덧셈)
+        # 2. 두 채널(Port)의 히트수 행렬 더하기 (Pandas DataFrame 덧셈)
         df_combined = df_a + df_b
 
         # 3. 매트릭스 방향 정렬 (오른쪽 아래가 0,0)
@@ -111,14 +112,15 @@ def plot_combined_heatmaps(dir_path):
             df_combined,
             cmap='viridis',
             annot=False,
-            cbar_kws={'label': 'Total Hits (CH_A + CH_B)'},
+            cbar_kws={'label': 'Total Hits (Port_A + Port_B)'}, # [수정] 라벨 이름 변경
             yticklabels=list(range(15, -1, -1)),
             xticklabels=list(range(15, -1, -1))
         )
 
         plt.yticks(rotation=0)
 
-        plt.title(f"Combined Global Occupancy Map (CH_A + CH_B)\nBottom-Right = 0,0")
+        # [수정] 타이틀 명칭 변경
+        plt.title(f"Combined Global Occupancy Map (Port_L + Port_R)\nBottom-Right = 0,0")
         plt.xlabel("Column ID (15 -> 0)")
         plt.ylabel("Row ID (15 -> 0)")
 
@@ -150,7 +152,7 @@ if __name__ == "__main__":
     for hm_file in heatmap_files:
         plot_global_heatmap(os.path.join(target_dir, hm_file))
 
-    # 3. [신규] CH_A & CH_B 통합 global heatmap
+    # 3. Port_A & Port_B 통합 global heatmap
     plot_combined_heatmaps(target_dir)
 
     print("=======================================")
